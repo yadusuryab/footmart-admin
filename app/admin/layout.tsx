@@ -1,4 +1,6 @@
 // app/admin/layout.tsx
+import { AdminHeader } from '@/components/admin/header'
+import { AdminNav } from '@/components/admin/nav'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
@@ -37,8 +39,10 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen ">
       <div className="flex">
-        <main className="flex-1 ">
-          <div className=" mx-auto">
+        <main className="flex-1 bg-primary">
+          <div className=" mx-auto pb-20">
+            <AdminHeader/>
+            <AdminNav />
             {children}
           </div>
         </main>

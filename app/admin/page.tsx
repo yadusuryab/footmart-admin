@@ -22,6 +22,15 @@ import {
 import { client as sanityClient } from "@/lib/sanity";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { AdminNav } from "@/components/admin/nav";
+
+const LABEL_OPTIONS = [
+  { title: "Trending", value: "trending" },
+  { title: "New Arrival", value: "new-arrival" },
+  { title: "Best Seller", value: "best-seller" },
+  { title: "Limited Edition", value: "limited-edition" },
+  { title: "Sale", value: "sale" },
+];
 
 interface Shoe {
   _id: string;
@@ -31,15 +40,26 @@ interface Shoe {
   stock: number;
   isDisabled: boolean;
   images?: any;
+  productLabel?: string[];
 }
+
+type StatusFilter = "all" | "active" | "disabled";
+type LabelFilter = "all" | string;
 
 export default function ProductsPage() {
   const [shoes, setShoes] = useState<Shoe[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [labelFilter, setLabelFilter] = useState<LabelFilter>("all");
   const [editingProduct, setEditingProduct] = useState<Shoe | null>(null);
-  const [editForm, setEditForm] = useState({ productName: "", price: 0, orderNumber: 0 });
+  const [editForm, setEditForm] = useState({
+    productName: "",
+    price: 0,
+    orderNumber: 0,
+    productLabel: [] as string[],
+  });
   const [reorderSaving, setReorderSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -83,7 +103,8 @@ export default function ProductsPage() {
           price,
           stock,
           isDisabled,
-          images[0]
+          images[0],
+          productLabel
         }`
       );
       setShoes(data);
@@ -134,15 +155,24 @@ export default function ProductsPage() {
       const isNumericSearch = !isNaN(Number(searchTerm));
       const numericValue = isNumericSearch ? Number(searchTerm) : null;
 
-      return (
+      const matchesSearch =
         shoe.productName.toLowerCase().includes(searchTerm) ||
         shoe.orderNumber.toString().includes(searchTerm) ||
         shoe._id.toLowerCase().includes(searchTerm) ||
         (isNumericSearch &&
           (shoe.orderNumber === numericValue ||
             shoe.price === numericValue ||
-            shoe.stock === numericValue))
-      );
+            shoe.stock === numericValue));
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "disabled" && shoe.isDisabled) ||
+        (statusFilter === "active" && !shoe.isDisabled);
+
+      const matchesLabel =
+        labelFilter === "all" || (shoe.productLabel || []).includes(labelFilter);
+
+      return matchesSearch && matchesStatus && matchesLabel;
     });
 
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -151,7 +181,7 @@ export default function ProductsPage() {
     const totalPages = Math.ceil(filtered.length / itemsPerPage);
 
     return { filteredProducts: paginated, totalPages };
-  }, [shoes, search, currentPage, itemsPerPage]);
+  }, [shoes, search, statusFilter, labelFilter, currentPage, itemsPerPage]);
 
   // Toggle product status
   const toggleProductStatus = useCallback(
@@ -202,6 +232,7 @@ export default function ProductsPage() {
       productName: product.productName,
       price: product.price,
       orderNumber: product.orderNumber,
+      productLabel: product.productLabel || [],
     });
     // Reset image state
     setImageFile(null);
@@ -213,6 +244,15 @@ export default function ProductsPage() {
     setImageFile(null);
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const toggleEditLabel = (value: string) => {
+    setEditForm((prev) => ({
+      ...prev,
+      productLabel: prev.productLabel.includes(value)
+        ? prev.productLabel.filter((v) => v !== value)
+        : [...prev.productLabel, value],
+    }));
   };
 
   // Handle image file selection
@@ -343,13 +383,14 @@ export default function ProductsPage() {
         setReorderSaving(false);
       }
 
-      // Patch name + price + final order number for the edited shoe
+      // Patch name + price + label + final order number for the edited shoe
       await sanityClient
         .patch(editingProduct._id)
         .set({
           productName: editForm.productName,
           price: editForm.price,
           orderNumber: finalOrderNumber,
+          productLabel: editForm.productLabel,
         })
         .commit();
 
@@ -362,6 +403,7 @@ export default function ProductsPage() {
                   productName: editForm.productName,
                   price: editForm.price,
                   orderNumber: finalOrderNumber,
+                  productLabel: editForm.productLabel,
                 }
               : shoe
           )
@@ -396,60 +438,65 @@ export default function ProductsPage() {
   return (
     <div className="space-y-4 md:space-y-6 md:p-4 bg-primary">
       {/* Header - Mobile Optimized */}
-      <div className="flex items-center justify-between p-2 md:p-4">
-        <div className="flex items-center gap-3">
-          <div>
-            <h1 className="text-4xl text-secondary font-bold tracking-tighter">
-              footmart
-            </h1>
-            <p className="text-xs md:text-sm text-gray-50 bg-secondary px-2 p-1 rounded tracking-tight font-semibold">
-              Manage Products
-            </p>
-          </div>
-        </div>
-
-        {mobileView && (
-          <div className="flex items-center gap-2">
-            <Link href="/admin/products/new">
-              <Button variant={"secondary"}>
-                <Plus />
-                Add Shoe
-              </Button>
-            </Link>
-          </div>
-        )}
-        {!mobileView && (
-          <div className="flex items-center gap-3">
-            <Link href="/admin/products/new">
-              <Button variant={"secondary"}>
-                <Plus className="h-4 w-4" />
-                Add Product
-              </Button>
-            </Link>
-          </div>
-        )}
-      </div>
+     
 
       <div>
         {/* Search and Filters */}
         <div className="bg-white rounded-t-3xl p-4 md:p-4">
           <div className="flex flex-col gap-3">
-            <div className="relative">
+          <div className="flex items-center justify-between gap-2">
+              <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4 md:h-5 md:w-5" />
               <input
                 type="text"
                 placeholder="Search by ID, name, or order number..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
                 className="w-full pl-9 pr-4 py-2 text-sm md:text-base bg-muted rounded-2xl focus:ring-2 text-muted-foreground font-semibold focus:border-transparent"
               />
             </div>
+<div>
+            <Link href="/admin/products/new" >
+              <Button ><Plus className="h-4 w-4" />  <span className="md: :hidden">Add Shoe</span> </Button>
+            </Link>
+          </div>
+          </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="text-xs md:text-sm text-muted-foreground font-semibold">
                 {filteredProducts.length} of {shoes.length} products
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as StatusFilter);
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs md:text-sm rounded-full bg-muted font-semibold px-2 py-1"
+                >
+                  <option value="all">All status</option>
+                  <option value="active">Active only</option>
+                  <option value="disabled">Disabled only</option>
+                </select>
+                <select
+                  value={labelFilter}
+                  onChange={(e) => {
+                    setLabelFilter(e.target.value as LabelFilter);
+                    setCurrentPage(1);
+                  }}
+                  className="text-xs md:text-sm rounded-full bg-muted font-semibold px-2 py-1"
+                >
+                  <option value="all">All labels</option>
+                  {LABEL_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.title}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={itemsPerPage}
                   onChange={(e) => {
@@ -622,6 +669,27 @@ export default function ProductsPage() {
                     </div>
                   </div>
 
+                  <div>
+                    <label className="block text-sm font-semibold text-muted-foreground mb-2">
+                      Product Label
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {LABEL_OPTIONS.map((opt) => (
+                        <label
+                          key={opt.value}
+                          className="flex items-center gap-2 text-xs border rounded-lg px-3 py-2 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={editForm.productLabel.includes(opt.value)}
+                            onChange={() => toggleEditLabel(opt.value)}
+                          />
+                          {opt.title}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                     <div>
                       <p className="text-sm font-medium">Status</p>
@@ -717,6 +785,18 @@ export default function ProductsPage() {
                             <div className="text-md tracking-tight text-muted-foreground font-semibold">
                               ₹{shoe.price}
                             </div>
+                            {shoe.productLabel && shoe.productLabel.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {shoe.productLabel.map((label) => (
+                                  <span
+                                    key={label}
+                                    className="text-[10px] bg-secondary/10 text-secondary px-2 py-0.5 rounded-full font-semibold"
+                                  >
+                                    {LABEL_OPTIONS.find((o) => o.value === label)?.title || label}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -787,6 +867,9 @@ export default function ProductsPage() {
                       Price
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Label
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Status
                     </th>
                     <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -842,6 +925,19 @@ export default function ProductsPage() {
 
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                           ₹{shoe.price}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1 max-w-[160px]">
+                            {(shoe.productLabel || []).map((label) => (
+                              <span
+                                key={label}
+                                className="text-[10px] bg-secondary/10 text-secondary px-2 py-0.5 rounded-full font-semibold"
+                              >
+                                {LABEL_OPTIONS.find((o) => o.value === label)?.title || label}
+                              </span>
+                            ))}
+                          </div>
                         </td>
 
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -904,9 +1000,16 @@ export default function ProductsPage() {
               <div className="text-muted-foreground mb-2 font-semibold">
                 No products found
               </div>
-              {search && (
-                <Button onClick={() => setSearch("")} variant={"outline"}>
-                  Clear search
+              {(search || statusFilter !== "all" || labelFilter !== "all") && (
+                <Button
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("all");
+                    setLabelFilter("all");
+                  }}
+                  variant={"outline"}
+                >
+                  Clear filters
                 </Button>
               )}
             </div>
